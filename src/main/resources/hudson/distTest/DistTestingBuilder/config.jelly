@@ -1,0 +1,44 @@
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+    <f:entry title="${%testDir}" field="testDir" description="${%testDirDesc}">
+        <f:textbox/>
+    </f:entry>
+    <f:entry description="${%compileTestsDesc}" field="compileTests">
+        <f:checkbox name="compileTests" checked="${instance.compileTests}" />
+        <label class="attach-previous">${%compileTests}</label>
+    </f:entry>
+    <f:entry title="${%DistributionDirectory}" description="${%distDirDesc}" field="distDirLocs">
+        <f:repeatable var="distLoc" name="distLocations" items="${instance.distLocations}" noAddButton="true" minimum="1">
+            <table width="100%">
+                <f:entry title="${%distDir}" field="distDir">
+                    <f:textbox value="${distLoc.distDir}"/>
+                </f:entry>
+                <f:entry field="addDistDirLocs">
+                    <div align="right">
+                        <input type="button" value="${%AddMoreDistLocations...}" class="repeatable-add show-if-last" />
+                        <input type="button" value="${%Delete}" class="repeatable-delete show-if-not-only" style="margin-left: 1em;" />
+                    </div>
+                </f:entry>
+            </table>
+        </f:repeatable>
+    </f:entry>
+    <f:entry title="${%LibDirectory}" description="${%libDirDesc}" field="libDirLocs">
+        <f:repeatable var="libLoc" name="libLocations" items="${instance.libLocations}" noAddButton="true" minimum="1">
+            <table width="100%">
+                <f:entry title="${%libDir}" field="libDir">
+                    <f:textbox value="${libLoc.libDir}" />
+                </f:entry>
+                <f:entry field="addLibDirLocs">
+                    <div align="right">
+                        <input type="button" value="${%AddMoreLibLocations...}" class="repeatable-add show-if-last" />
+                        <input type="button" value="${%Delete}" class="repeatable-delete show-if-not-only" style="margin-left: 1em;" />
+                    </div>
+                </f:entry>
+            </table>
+        </f:repeatable>
+    </f:entry>
+
+    <f:entry field="waitForNodes">
+        <f:checkbox name="waitForNodes" checked="${instance.waitForNodes}" description="${%waitForBusyNodesDesc}" />
+        <label class="attach-previous">${%waitForBusyNodes}</label>
+    </f:entry>
+</j:jelly>
