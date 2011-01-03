@@ -8,6 +8,7 @@ package hudson.distTest;
 import hudson.FilePath;
 import java.io.IOException;
 import java.util.LinkedList;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  *
@@ -15,7 +16,7 @@ import java.util.LinkedList;
  */
 class TestFilePathVisitor {
 
-    private LinkedList<String> listOfTests = new LinkedList<String>();
+    private ConcurrentLinkedQueue<String> listOfTests = new ConcurrentLinkedQueue<String>();
     void visit(String relativePath) throws IOException {
         getListOfTests().add(relativePath);
     }
@@ -23,7 +24,7 @@ class TestFilePathVisitor {
     /**
      * @return the listOfTests
      */
-    public LinkedList<String> getListOfTests() {
+    public ConcurrentLinkedQueue<String> getListOfTests() {
         return listOfTests;
     }
 
