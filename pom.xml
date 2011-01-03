@@ -13,6 +13,13 @@
     <url>http://wiki.hudson-ci.org/display/HUDSON/distTest+Plugin</url>
     <name>Hudson Distributed Testing Plugin</name>
 
+    <distributionManagement>
+      <repository>
+        <id>java.net-m2-repository</id>
+        <url>http://maven.hudson-labs.org/content/repositories/releases/</url>
+      </repository>
+    </distributionManagement>
+
     <!-- get every artifact through maven.glassfish.org, which proxies all the artifacts that we need -->
     <repositories>
         <repository>
@@ -101,12 +108,6 @@
             <email>novak.miroslav95@gmail.com</email>
         </developer>
     </developers>
-
-  <scm>
-    <connection>scm:svn:https://guest@svn.dev.java.net/svn/hudson/tags/1.0</connection>
-    <developerConnection>scm:svn:https://svn.dev.java.net/svn/hudson/tags/1.0</developerConnection>
-    <url>https://hudson.dev.java.net/source/browse/hudson/tags/1.0</url>
-  </scm>
 </project>
 
 
