@@ -17,8 +17,6 @@ import hudson.model.Hudson.MasterComputer;
 import hudson.model.Label;
 import hudson.model.Node;
 import hudson.remoting.Callable;
-import hudson.remoting.Channel;
-import hudson.remoting.DelegatingCallable;
 import hudson.remoting.Future;
 import hudson.remoting.VirtualChannel;
 import hudson.slaves.SlaveComputer;
@@ -26,6 +24,7 @@ import hudson.tasks.Builder;
 import hudson.tasks.BuildStepDescriptor;
 import java.io.File;
 import java.net.URISyntaxException;
+import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.sf.json.JSONObject;
@@ -37,7 +36,6 @@ import javax.servlet.ServletException;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
@@ -46,12 +44,9 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.tools.ant.DefaultLogger;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.Target;
 import org.apache.tools.ant.taskdefs.Javac;
@@ -100,12 +95,15 @@ public class DistTestingBuilder extends Builder implements Serializable {
 
     /**
      * There is a necessity to lock executors on nodes which will be used for testing.
+     * Only execution in a synchronized section doesn't lock executors which are idle.
      * So one task is send to each executor and that definitely lock it.
+     * This operation will get the executor at the beginning of the synchronized section
+     * where is our log. (method entrySynchronizedSection())
      *
      * @param label the assigned label
-     * @param build the whole build
      */
     private LockingTasks lockExecutors(Label label, AbstractBuild build) throws IOException, InterruptedException {
+
 
         ArrayList<java.util.concurrent.Future<FreeStyleBuild>> lockBuildList = new ArrayList<java.util.concurrent.Future<FreeStyleBuild>>();
 
@@ -176,6 +174,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
 
                                         }
 
+                                        listener.getLogger().println("zije parent: " + isParentProjectStillAlive);
                                         Thread.sleep(1000);
                                     }
 
@@ -208,8 +207,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
     }
 
     /**
-     * Method that actually run the whole build step and controll it. Initialize
-     * distributed testing and run test on testing nodes.
+     * Method that actually run the whole build step and controll it
      *
      * @param build
      * @param launcher
@@ -218,8 +216,6 @@ public class DistTestingBuilder extends Builder implements Serializable {
      */
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, final BuildListener listener) {
-
-        ArrayList<Thread> threads = new ArrayList<Thread>();
 
         try {
 
@@ -259,14 +255,15 @@ public class DistTestingBuilder extends Builder implements Serializable {
 
             // copy the necessary libraries needed to run and compile tests - creates lib directory
             //listener.getLogger().print("Copying libraries: ");
-            copyLibraries(build.getWorkspace().child(lidDir), listener);
-            
+            copyLibraries(build.getWorkspace().child(lidDir));
+            listener.getLogger().println("finished");
             if (isCompileTests()) {
                 listener.getLogger().print("Compiling sources on slave " + build.getBuiltOnStr() + " :");
-                compileTests(build, listener);
+                compileTests(build);
                 listener.getLogger().println("finished");
             }
 
+            // LOAD ALL TEST TO THE QUEUE - String class name (example: "helloworld.Hello")
             String directoryWithCompiledTests = null;
 
             if (compileTests) {
@@ -285,67 +282,281 @@ public class DistTestingBuilder extends Builder implements Serializable {
 
             }
 
-            // LOAD ALL TEST TO THE QUEUE - String class name (example: "helloworld.Hello")
-            ConcurrentLinkedQueue<String> tests = findTestsInProjectWorkspace(build.getWorkspace().child(directoryWithCompiledTests));
-            listener.getLogger().println("Print all tests classes:");
+            final LinkedList<String> tests = findTestsInProjectWorkspace(build.getWorkspace().child(directoryWithCompiledTests));
+            listener.getLogger().println();
+            listener.getLogger().println("Print all tests files:");
             for (Iterator<String> it = tests.iterator(); it.hasNext();) {
                 listener.getLogger().println(it.next());
             }
             listener.getLogger().println();
-
             // create directory for test results because ant is not able to do so
             build.getWorkspace().child("results").mkdirs();
 
+            final ArrayList<String> listOfNodes = new ArrayList<String>();
 
-            ArrayList<Node> listOfNodes = lockingTasks.getNodeList();
-            
-            // add this node too if not master
+            for (Node n : lockingTasks.getNodeList()) {
+
+                listOfNodes.add(n.getDisplayName());
+
+            }
+            // add this node too
             if (build.getBuiltOn().toComputer() instanceof SlaveComputer) {
 
-                listOfNodes.add(build.getBuiltOn());
+                listOfNodes.add(build.getBuiltOnStr());
 
-            }
-            
-            listener.getLogger().println();
-            listener.getLogger().println("Lists all testing nodes:");
-
-            for (Node node : listOfNodes) {
-                listener.getLogger().println(node.getNodeName());
             }
 
             listener.getLogger().println();
-
-            // measure time
-            long startTime = System.currentTimeMillis();
-            Thread t = null;
-            // create thread for each node and start it
-            for (Node n : listOfNodes) {
-
-                t = new Thread(new RunTest(tests, n, build, listener));
-                t.start();
-                threads.add(t);
-                t = null;
-                
+            listener.getLogger().println("Lists all test nodes:");
+            for (String node : listOfNodes) {
+                listener.getLogger().println(node);
             }
+            listener.getLogger().println();
 
-            // wait for finish of all the testing
-            for (Thread th : threads)    {
-                th.join();
-            }
-            long resultTime = System.currentTimeMillis() - startTime;
-            listener.getLogger().println("Testing time: " + resultTime);
+            final String projectName = build.getProject().getName();
+
+////////////////////////// CALL SLAVE (and let him to choose test and node to run next)
+            listener.getLogger().println("Call build-on slave to run tests");
+            build.getWorkspace().act(new FileCallable<Boolean>() {
+
+                public Boolean invoke(File f, VirtualChannel channel) throws IOException, InterruptedException {
+
+                    final TreeMap<String, Future<Boolean>> mapNodeFuture = new TreeMap<String, Future<Boolean>>();
+
+                    for (String n : listOfNodes) {
+                        mapNodeFuture.put(n, null);
+                    }
+
+                    Future<Boolean> future = null;
+                    listener.getLogger().println("Start sending tests");
+                    long startTime = System.currentTimeMillis();
+                    while (!tests.isEmpty()) {
+
+                        for (String n : mapNodeFuture.keySet()) {
+                            final String nodeName = n;
+
+                            if ((future = mapNodeFuture.get(n)) == null) {
+                                // run tests on them
+                                final String testClass = tests.poll();
+                                if (testClass != null) {
+
+//                                listener.getLogger().println("Call master to send test " +testClass+ " to node " + nodeName);
+                                    ///////////// call MASTER and made him to call another slave (needs node and test name)
+                                    future = channel.callAsync(new Callable<Boolean, Throwable>() {
+
+                                        public Boolean call() throws Throwable {
+
+                                            AbstractBuild build = null;
+
+                                            for (hudson.model.Project p : Hudson.getInstance().getProjects()) {
+
+                                                if (p instanceof FreeStyleProject && projectName.equals((String) p.getName())) {
+
+                                                    FreeStyleProject f = (FreeStyleProject) p;
+
+                                                    build = f.getLastBuild();
+
+                                                }
+                                            }
+
+                                            Node node = Hudson.getInstance().getNode(nodeName);
+                                            String workspaceOnTestNode = getWorkspaceForThisProjectOnNode(node, build);
+//                                         listener.getLogger().println("Call slave to execute test " +testClass+ " " + nodeName);
+                                            //////////////// CALL SLAVE (needs node and test)
+                                            Boolean b = new FilePath(node.getChannel(), workspaceOnTestNode).act(new FileCallable<Boolean>() {
+
+                                                public Boolean invoke(File file, VirtualChannel channel) throws IOException, InterruptedException {
+                                                    listener.getLogger().println("Run test " + testClass + " on node: " + nodeName);
+                                                    Project project = null;
+
+                                                    try {
+
+                                                        File baseDir = file;
+
+                                                        File resultsDir = new File(baseDir, "results");
+
+//                    listener.getLogger().println("BaseDir is " + baseDir.getAbsolutePath());
+
+                                                        project = new Project();
+
+//                    DefaultLogger consoleLogger = new DefaultLogger();
+//                    consoleLogger.setErrorPrintStream(listener.getLogger());
+//                    consoleLogger.setOutputPrintStream(listener.getLogger());
+//                    consoleLogger.setMessageOutputLevel(Project.MSG_INFO);
+//
+//                    project.addBuildListener(consoleLogger);
+
+                                                        project.init();
+                                                        project.setBaseDir(baseDir);
+                                                        JUnitTest test = new JUnitTest(testClass, true, true, false);
+//                                        test.setOutfile("Test-" + testClass);
+                                                        test.setTodir(resultsDir);
+                                                        FormatterElement fe = new FormatterElement();
+                                                        FormatterElement.TypeAttribute ta = new FormatterElement.TypeAttribute();
+                                                        ta.setValue("xml");
+                                                        fe.setType(ta);
+                                                        test.addFormatter(fe);
+
+                                                        JUnitTask junit = null;
+                                                        try {
+                                                            junit = new JUnitTask();
+                                                        } catch (Exception ex) {
+                                                            ex.printStackTrace(listener.getLogger());
+                                                        }
+                                                        junit.addTest(test);
+                                                        junit.setProject(project);
+                                                        junit.init();
+                                                        Path p = junit.createClasspath();
+                                                        p.add(p.systemClasspath);
+
+                                                        File fileTest = null;
+
+                                                        if (compileTests) {
+
+                                                            fileTest = new File(baseDir, "tests");
+
+                                                        } else {
+
+                                                            fileTest = new File(baseDir, getTestDir());
+
+                                                        }
+
+                                                        File libDirFile = new File(baseDir, lidDir);
+                                                        p.createPathElement().setLocation(libDirFile);
+                                                        for (File l : libDirFile.listFiles()) {
+                                                            if (l.isFile()) {
+                                                                p.createPathElement().setLocation(l);
+//                            listener.getLogger().println("lokace: " + l);
+                                                            }
+                                                        }
+
+                                                        p.createPathElement().setLocation(fileTest);
+
+                                                        File distsDirFile = null;
+
+                                                        for (DistLocations distLoc : getDistLocations()) {
+
+                                                            distsDirFile = new File(baseDir, distLoc.getDistDir());
+
+                                                            p.createPathElement().setLocation(new File(baseDir, distLoc.getDistDir()));
+//                        listener.getLogger().println("lokace: " + new File(baseDir, distLoc.getDistDir()).getAbsolutePath());
+                                                            if (distsDirFile.isDirectory()) {
+
+                                                                for (File f : distsDirFile.listFiles()) {
+                                                                    //if file then add too
+                                                                    if (!f.isDirectory()) {
+                                                                        p.createPathElement().setLocation(f);
+//                                    listener.getLogger().println("lokace: " + f);
+                                                                    }
+                                                                }
+                                                            }
+
+                                                        }
+
+                                                        File libDirFile2 = null;
+
+                                                        for (LibLocations libLoc : getLibLocations()) {
+
+                                                            libDirFile2 = new File(baseDir, libLoc.getLibDir());
+
+                                                            p.createPathElement().setLocation(libDirFile2);
+//                        listener.getLogger().println("lokace: " + libDirFile2);
+                                                            if (libDirFile2.isDirectory()) {
+
+                                                                for (File f2 : libDirFile2.listFiles()) {
+                                                                    //if file then add too
+                                                                    if (!f2.isDirectory()) {
+                                                                        p.createPathElement().setLocation(f2);
+//                                    listener.getLogger().println("lokace: " + f2);
+                                                                    }
+                                                                }
+                                                            }
+
+                                                        }
+
+                                                        Target target = new Target();
+                                                        target.setName("test");
+                                                        target.addTask(junit);
+                                                        project.addTarget("test", target);
+                                                        project.executeTarget("test");
+
+                                                    } finally {
+
+                                                        project = null;
+                                                        System.gc();
+                                                    }
+
+                                                    return true;
+                                                }
+                                            });
+
+                                            /// returning from call on test slave
+                                            ///////////////////////////
+                                            /// now back on master
+
+                                            return true;
+
+                                        }
+                                    });
+                                    ///// here on build-on slave again
+                                    mapNodeFuture.put(n, future);
+                                }
+                            } else {
+
+                                try {
+
+                                    // did test finished - if yes then free then node for another test
+                                    if (future.get(100, TimeUnit.MILLISECONDS)) {
+                                        mapNodeFuture.put(n, null);
+                                    }
+                                } catch (ExecutionException ex) {
+                                    ex.printStackTrace(listener.getLogger());
+
+
+                                } catch (TimeoutException ex) {
+                                    //ignore timeouts
+                                }
+
+
+                            }
+
+                            future = null;
+
+                        }
+                    }
+
+                    // it can happen that some tests are still in progress
+                    // in this case we have to wait for them
+                    listener.getLogger().println("Waiting for last tests results");
+
+                    for (String n : mapNodeFuture.keySet()) {
+
+                        if ((future = mapNodeFuture.get(n)) != null) {
+                            try {
+                                future.get();
+                            } catch (ExecutionException ex) {
+                                Logger.getLogger(DistTestingBuilder.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+
+                        }
+
+                    }
+
+                    long time = System.currentTimeMillis() - startTime;
+                    listener.getLogger().println("Testing time: " + time);
+
+                    return true;
+
+                }
+            });
+
+
 
         } catch (Throwable ex) {
             ex.printStackTrace(listener.getLogger());
         } finally {
-            // kill all threads with tests if still exists
-            for (Thread t : threads)    {
-
-                t.interrupt();
-                
-            }
-
         }
+
         return true;
     }
 
@@ -363,153 +574,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
         return path;
     }
 
-    /**
-     * Run test on the given node - runs ant programatically on this node
-     *
-     * @param node node where to run this test
-     * @param testClassName name of the class f.e. "helloworld.Hello"
-     * @param testFilePath path on node where to find test file class
-     * @return future whether the test finished
-     * @throws IOException
-     * @throws InterruptedException
-     */
-    public Boolean runTestOnNode(Node node, final String testClassName, AbstractBuild build, final BuildListener listener) throws IOException, InterruptedException, Exception {
-
-        final String nodeName = node.getNodeName();
-
-        Boolean result = null;
-
-        listener.getLogger().println("Run test " + testClassName + " on node " + nodeName);
-
-        FilePath rootProjectDir = new FilePath(node.getChannel(), getWorkspaceForThisProjectOnNode(node, build));
-
-        result = rootProjectDir.act(new FileCallable<Boolean>() {
-
-            public Boolean invoke(File file, VirtualChannel channel) throws IOException, InterruptedException {
-
-                Project project = null;
-
-                try {
-
-                    File baseDir = file;
-
-                    File resultsDir = new File(baseDir, "results");
-
-//                    listener.getLogger().println("BaseDir is " + baseDir.getAbsolutePath());
-
-                    project = new Project();
-
-//                    DefaultLogger consoleLogger = new DefaultLogger();
-//                    consoleLogger.setErrorPrintStream(listener.getLogger());
-//                    consoleLogger.setOutputPrintStream(listener.getLogger());
-//                    consoleLogger.setMessageOutputLevel(Project.MSG_INFO);
-//
-//                    project.addBuildListener(consoleLogger);
-
-                    project.init();
-                    project.setBaseDir(baseDir);
-                    JUnitTest test = new JUnitTest(testClassName, true, true, false);
-                    test.setTodir(resultsDir);
-                    FormatterElement fe = new FormatterElement();
-                    FormatterElement.TypeAttribute ta = new FormatterElement.TypeAttribute();
-                    ta.setValue("xml");
-                    fe.setType(ta);
-                    test.addFormatter(fe);
-
-                    JUnitTask junit = null;
-                    junit = new JUnitTask();
-                    
-                    junit.addTest(test);
-                    junit.setProject(project);
-                    junit.init();
-                    Path p = junit.createClasspath();
-                    p.add(p.systemClasspath);
-
-                    File fileTest = null;
-
-                    if (compileTests) {
-
-                        fileTest = new File(baseDir, "tests");
-
-                    } else {
-
-                        fileTest = new File(baseDir, getTestDir());
-
-                    }
-
-                    File libDirFile = new File(baseDir, lidDir);
-                    p.createPathElement().setLocation(libDirFile);
-                    for (File l : libDirFile.listFiles()) {
-                        if (l.isFile()) {
-                            p.createPathElement().setLocation(l);
-//                            listener.getLogger().println("lokace: " + l);
-                        }
-                    }
-
-                    p.createPathElement().setLocation(fileTest);
-
-                    File distsDirFile = null;
-
-                    for (DistLocations distLoc : getDistLocations()) {
-
-                        distsDirFile = new File(baseDir, distLoc.getDistDir());
-
-                        p.createPathElement().setLocation(new File(baseDir, distLoc.getDistDir()));
-//                        listener.getLogger().println("lokace: " + new File(baseDir, distLoc.getDistDir()).getAbsolutePath());
-                        if (distsDirFile.isDirectory()) {
-
-                            for (File f : distsDirFile.listFiles()) {
-                                //if file then add too 
-                                if (!f.isDirectory()) {
-                                    p.createPathElement().setLocation(f);
-//                                    listener.getLogger().println("lokace: " + f);
-                                }
-                            }
-                        }
-
-                    }
-
-                    File libDirFile2 = null;
-
-                    for (LibLocations libLoc : getLibLocations()) {
-
-                        libDirFile2 = new File(baseDir, libLoc.getLibDir());
-
-                        p.createPathElement().setLocation(libDirFile2);
-//                        listener.getLogger().println("lokace: " + libDirFile2);
-                        if (libDirFile2.isDirectory()) {
-
-                            for (File f2 : libDirFile2.listFiles()) {
-                                //if file then add too
-                                if (!f2.isDirectory()) {
-                                    p.createPathElement().setLocation(f2);
-//                                    listener.getLogger().println("lokace: " + f2);
-                                }
-                            }
-                        }
-
-                    }
-
-                    Target target = new Target();
-                    target.setName("test");
-                    target.addTask(junit);
-                    project.addTarget("test", target);
-                    project.executeTarget("test");
-                } catch (Exception ex) {
-                    ex.printStackTrace(listener.getLogger());
-                } finally {
-
-                    project = null;
-                    
-                }
-
-                return true;
-            }
-        });
-
-        return result;
-    }
-
+   
     // overrided for better type safety.
     // if your plugin doesn't really define any property on Descriptor,
     // you don't have to do this.
@@ -525,19 +590,14 @@ public class DistTestingBuilder extends Builder implements Serializable {
      * @param class name f.e. "helloword.Hello"
      * @return FilePath to the library where this class resides
      */
-    private FilePath getFilePathOnMasterForClass(String className, BuildListener listener) {
+    private FilePath getFilePathOnMasterForClass(String className) throws ClassNotFoundException, URISyntaxException {
         FilePath f = null;
-        try {
-            Class cls = this.getClass().getClassLoader().loadClass(className);
-            ProtectionDomain pDomain = cls.getProtectionDomain();
-            CodeSource cSource = pDomain.getCodeSource();
-            URL url = cSource.getLocation(); // file:/c:/almanac14/examples/
-            f = new FilePath(new File(url.toURI()));
-        } catch (URISyntaxException ex) {
-            ex.printStackTrace(listener.getLogger());
-        } catch (ClassNotFoundException ex) {
-            ex.printStackTrace(listener.getLogger());
-        }
+        Class cls = this.getClass().getClassLoader().loadClass(className);
+        ProtectionDomain pDomain = cls.getProtectionDomain();
+        CodeSource cSource = pDomain.getCodeSource();
+        URL url = cSource.getLocation(); // file:/c:/almanac14/examples/
+        f = new FilePath(new File(url.toURI()));
+
         return f;
     }
 
@@ -558,13 +618,13 @@ public class DistTestingBuilder extends Builder implements Serializable {
      * @throws InterruptedException
      * @throws Exception
      */
-    private void copyLibraries(FilePath toWhere, BuildListener listener) throws IOException, InterruptedException, Exception {
+    private void copyLibraries(FilePath toWhere) throws IOException, InterruptedException, Exception {
         if (!toWhere.exists()) {
             toWhere.mkdirs();
         }
-        FilePath junit = getFilePathOnMasterForClass("org.junit.runner.JUnitCore", listener);
-        FilePath antJunit = getFilePathOnMasterForClass("org.apache.tools.ant.taskdefs.optional.junit.JUnitTask", listener);
-        FilePath ant = getFilePathOnMasterForClass("org.apache.tools.ant.Project", listener);
+        FilePath junit = getFilePathOnMasterForClass("org.junit.runner.JUnitCore");
+        FilePath antJunit = getFilePathOnMasterForClass("org.apache.tools.ant.taskdefs.optional.junit.JUnitTask");
+        FilePath ant = getFilePathOnMasterForClass("org.apache.tools.ant.Project");
         junit.copyTo(toWhere.child(junit.getName()));
         antJunit.copyTo(toWhere.child(antJunit.getName()));
         ant.copyTo(toWhere.child(ant.getName()));
@@ -579,60 +639,16 @@ public class DistTestingBuilder extends Builder implements Serializable {
      * @throws IOException
      * @throws Exception
      */
-    private ConcurrentLinkedQueue<String> findTestsInProjectWorkspace(FilePath dirWithTest) throws IOException, Exception {
+    private LinkedList<String> findTestsInProjectWorkspace(FilePath dirWithTest) throws IOException, Exception {
         TestFilePathVisitor filePathVisitor = new TestFilePathVisitor();
         // scanner which go through the directory with tests and pass to TestVisitor
         FilePathDirScanner filePathDirScanner = new FilePathDirScanner();
-        
         filePathDirScanner.scan(dirWithTest, filePathVisitor);
-
-//        final LinkedList<String> listOfTests = filePathVisitor.getListOfTests();
-//
-//        final String path = dirWithTest.getRemote();
-//
-//        LinkedList<String> listOfTestsFiltered = dirWithTest.act(new FileCallable<LinkedList<String>>() {
-//
-//            public LinkedList<String> invoke(File f, VirtualChannel channel) throws IOException, InterruptedException {
-//
-//                LinkedList<String> filteredListOfTests = new LinkedList<String>();
-//
-//                ClassLoader cls = ClassLoader.getSystemClassLoader();
-//                URL[] urls = new URL[]{new File(path).toURI().toURL()};
-//                listener.getLogger().println(new File(path).toURI().toURL());
-//                URLClassLoader urlCls = new URLClassLoader(urls, cls);
-//
-//                for (String s : listOfTests) {
-//
-//                    try {
-//                        try {
-//                            junit.framework.TestCase testCase = (junit.framework.TestCase) urlCls.loadClass(s).newInstance();
-//                        } catch (InstantiationException ex) {
-//                            ex.printStackTrace(listener.getLogger());
-//                        } catch (IllegalAccessException ex) {
-//                            ex.printStackTrace(listener.getLogger());
-//                        }
-//                            filteredListOfTests.add(s);
-//                            listener.getLogger().println(s + " is a test class");
-//
-//                    } catch (ClassNotFoundException ex) {
-//                        ex.printStackTrace(listener.getLogger());
-//                    }
-//                }
-//
-//                return filteredListOfTests;
-//            }
-//
-//
-//        });
-
-
         if (filePathVisitor.getListOfTests().size() <= 0) {
             throw new Exception("Could not find any test classes in the directory: " + dirWithTest);
         }
         return filePathVisitor.getListOfTests();
     }
-
-
 
     /**
      * @return the testDir
@@ -674,7 +690,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
      * @throws IOException
      * @throws InterruptedException
      */
-    private void compileTests(AbstractBuild build, final BuildListener listener) throws IOException, InterruptedException {
+    private void compileTests(AbstractBuild build) throws IOException, InterruptedException {
         // get workspace filapath on the built-on slave and compile
 //        listener.getLogger().println();
 //        listener.getLogger().println("workspace je: " + build.getWorkspace().getRemote());
@@ -722,7 +738,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
                         libDirFile = new File(f, libLoc.getLibDir());
 
                         libs.createPathElement().setLocation(new File(f, libLoc.getLibDir()));
-//                        listener.getLogger().println("lokace: " + new File(f, libLoc.getLibDir()).getAbsolutePath());
+ 
                         if (libDirFile.isDirectory()) {
 
                             for (File file : libDirFile.listFiles()) {
@@ -730,7 +746,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
                                 if (file.isFile()) {
 
                                     libs.createPathElement().setLocation(new File(f, libLoc.getLibDir() + "/" + file.getName()));
-//                                    listener.getLogger().println("lokace: " + new File(f, libLoc.getLibDir() + "/" + file.getName()).getAbsolutePath());
+       
                                 }
                             }
                         }
@@ -746,14 +762,14 @@ public class DistTestingBuilder extends Builder implements Serializable {
                         distsDirFile = new File(f, distLoc.getDistDir());
 
                         dists.createPathElement().setLocation(new File(f, distLoc.getDistDir()));
-//                        listener.getLogger().println("lokace: " + new File(f, distLoc.getDistDir()).getAbsolutePath());
+                    
                         if (distsDirFile.isDirectory()) {
 
                             for (File file : distsDirFile.listFiles()) {
 
                                 if (file.isFile()) {
                                     dists.createPathElement().setLocation(new File(f, distLoc.getDistDir() + file.getName()));
-//                                    listener.getLogger().println("lokace: " + new File(f, distLoc.getDistDir() + file.getName()).getAbsolutePath());
+                    
                                 }
                             }
                         }
@@ -765,7 +781,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
                     srcPath.setLocation(new File(f, testDir));
 
                     javacTask.setSrcdir(srcPath);
-
+                    
                     javacTask.setDestdir(testsDir);
 
                     javacTask.setProject(project);
@@ -944,44 +960,4 @@ public class DistTestingBuilder extends Builder implements Serializable {
             return libDir;
         }
     }
-
-    class RunTest implements Runnable   {
-
-        ConcurrentLinkedQueue<String> q = null;
-        Node node = null;
-        AbstractBuild build = null;
-        BuildListener listener = null;
-
-        public RunTest(ConcurrentLinkedQueue q, Node node, AbstractBuild build, BuildListener listener) {
-
-            this.q = q;
-            this.node = node;
-            this.build = build;
-            this.listener = listener;
-
-        }
-
-        public void run() {
-
-            String testName = null;
-
-            try {
-                while ((testName = q.poll()) != null) {
-
-                    // run test on node
-                    runTestOnNode(node, testName, build, listener);
-                    
-                }
-            } catch (IOException ex) {
-                ex.printStackTrace(listener.getLogger());
-            } catch (InterruptedException ex) {
-                ex.printStackTrace(listener.getLogger());
-            } catch (Exception ex) {
-                ex.printStackTrace(listener.getLogger());
-            }
-
-        }
-    }
 }
-
-
