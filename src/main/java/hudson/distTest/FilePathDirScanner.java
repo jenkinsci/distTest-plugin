@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package hudson.distTest;
 
 import hudson.FilePath;
@@ -12,7 +8,9 @@ import java.io.IOException;
 
 /**
  *
- * @author Oneill
+ * This class scans the given directory for test classes.
+ *
+ *  @author Miroslav Novak
  */
 public class FilePathDirScanner implements Serializable {
 
@@ -21,6 +19,14 @@ public class FilePathDirScanner implements Serializable {
     public FilePathDirScanner()   {
     }
 
+    /**
+     * Finds all classes with "test" substring in the name.
+     *
+     * @param f where to find
+     * @param path subpath
+     * @param visitor to whom to tell that you found the test class
+     * @throws IOException
+     */
     void scan(FilePath f, String path, TestFilePathVisitor visitor) throws IOException {
         try {
             // if it's a directory then scan its contents

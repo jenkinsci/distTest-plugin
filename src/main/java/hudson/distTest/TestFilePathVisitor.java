@@ -1,8 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package hudson.distTest;
 
 import hudson.FilePath;
@@ -11,11 +6,21 @@ import java.util.LinkedList;
 
 /**
  *
- * @author Oneill
+ * Class which visit all the test classes.
+ *
+ *  @author Miroslav Novak
  */
 class TestFilePathVisitor {
 
     private LinkedList<String> listOfTests = new LinkedList<String>();
+   
+     /**
+     * if it is a test class then put it to a list of tests.
+     *
+     * @param f root file path
+     * @param relativePath relative path
+     * @throws IOException
+     */
     void visit(String relativePath) throws IOException {
         getListOfTests().add(relativePath);
     }

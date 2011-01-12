@@ -1,8 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package hudson.distTest;
 
 import hudson.model.FreeStyleBuild;
@@ -13,6 +8,8 @@ import hudson.tasks.Builder;
 import java.util.ArrayList;
 
 /**
+ *
+ * Just hold information about locked test nodes.
  *
  * @author mnovak
  */
@@ -35,6 +32,8 @@ public class LockingTasks extends Builder {
    }
 
     /**
+     * Return list of jobs started on testing nodes.
+     *
      * @return the futList
      */
     public ArrayList<java.util.concurrent.Future<FreeStyleBuild>> getFutList() {
@@ -49,6 +48,8 @@ public class LockingTasks extends Builder {
     }
 
     /**
+     * Returns list of projects used for lock projects.
+     *
      * @return the fspList
      */
     public ArrayList<FreeStyleProject> getFspList() {
@@ -63,6 +64,8 @@ public class LockingTasks extends Builder {
     }
 
     /**
+     * Returns list of of locked nodes.
+     *
      * @return the nodeList
      */
     public ArrayList<Node> getNodeList() {

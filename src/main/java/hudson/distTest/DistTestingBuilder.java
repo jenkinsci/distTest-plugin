@@ -58,8 +58,8 @@ import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
 /**
- * Core class for Distributed Testing Plugin. This class take test source code
- * and run test always on one node.
+ * Core class for Distributed Testing Plugin. This class takes tests
+ * and run them on nodes in a label to which this project was tied.
  *
  * @author Miroslav Novak
  */
@@ -77,10 +77,10 @@ public class DistTestingBuilder extends Builder implements Serializable {
      * Constructor for this build.
      *
      * @param distLocations locations of distribution directories and jar files
-     * @param libLocations locations of libraries - jar of directory
-     * @param testDir where resides directory with compiled tests
+     * @param libLocations locations of libraries
+     * @param testDir where resides directory with compiled tests or test sources
      * @param waitForNodes whether build should wait for busy executors on online nodes
-     * @param compileTests whether compile tests sources - compiles all the java source classes in workspace
+     * @param compileTests whether compile tests sources in "testDir"
      */
     @DataBoundConstructor
     public DistTestingBuilder(DistLocations[] distLocations, LibLocations[] libLocations,
@@ -95,10 +95,6 @@ public class DistTestingBuilder extends Builder implements Serializable {
 
     /**
      * There is a necessity to lock executors on nodes which will be used for testing.
-     * Only execution in a synchronized section doesn't lock executors which are idle.
-     * So one task is send to each executor and that definitely lock it.
-     * This operation will get the executor at the beginning of the synchronized section
-     * where is our log. (method entrySynchronizedSection())
      *
      * @param label the assigned label
      */
@@ -207,7 +203,7 @@ public class DistTestingBuilder extends Builder implements Serializable {
     }
 
     /**
-     * Method that actually run the whole build step and controll it
+     * Method that actually runs the whole build step and control it.
      *
      * @param build
      * @param launcher
@@ -560,6 +556,16 @@ public class DistTestingBuilder extends Builder implements Serializable {
         return true;
     }
 
+    /**
+     *
+     * Gets an absolute path where the workspace of the given project is on the node.
+     *
+     * @param node node where to look for workspace
+     * @param build this build
+     * @return an absolute path of the workspace
+     * @throws IOException
+     * @throws Exception
+     */
     public String getWorkspaceForThisProjectOnNode(Node node, AbstractBuild build) throws IOException, Exception {
 
         String path = null;
@@ -657,34 +663,10 @@ public class DistTestingBuilder extends Builder implements Serializable {
         return testDir;
     }
 
-    /**
-     * Return all nodes which are idle(all executors are free) and online. Warning:
-     * it doesn't count build-on node.
-     *
-     * @param label Label assigned to this project
-     * @return list of nodes
-     */
-    private Map<Node, Future<Boolean>> getAllUseableNodes(Label label) {
-
-        Map<Node, Future<Boolean>> map = new HashMap<Node, Future<Boolean>>();
-
-        for (Node node : label.getNodes()) {
-
-            if (node.toComputer().isOnline() && node.toComputer().isIdle()
-                    && node.toComputer() instanceof SlaveComputer) {
-
-                map.put(node, null);
-
-            }
-        }
-
-        return map;
-    }
-
-    /**
-     * When user set "compile tests" check box then all sources in the workspace
-     * will be compiled. All necessary libraries must be present in the "lib" directory.
-     * Compiles test classes are saved in the specified "directory with tests" directory.
+     /**
+     * When user set "compile tests" checkbox then all sources in the testDir directory
+     * will be compiled. All necessary libraries must be set.
+     * Compiles test classes are saved in the "tests" directory.
      *
      * @param build build of this project
      * @throws IOException
@@ -929,6 +911,9 @@ public class DistTestingBuilder extends Builder implements Serializable {
         }
     }
 
+    /**
+     * Class used for storing dist. locations typed by user.
+     */
     @ExportedBean
     public static final class DistLocations implements Serializable {
 
@@ -945,6 +930,9 @@ public class DistTestingBuilder extends Builder implements Serializable {
         }
     }
 
+    /**
+     * Class used for storing lib. locations typed by user
+     */
     @ExportedBean
     public static final class LibLocations implements Serializable {
 
