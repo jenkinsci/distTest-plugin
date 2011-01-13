@@ -1,128 +1,129 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.jvnet.hudson.plugins</groupId>
-        <artifactId>plugin</artifactId>
-        <version>1.350</version><!-- which version of Hudson is this plugin built against? -->
-        <relativePath>../pom.xml</relativePath>
-    </parent>
-
-    <artifactId>distTest</artifactId>
-    <version>1.1-SNAPSHOT</version>
-    <packaging>hpi</packaging>
-    <url>http://wiki.hudson-ci.org/display/HUDSON/distTest+Plugin</url>
-    <name>Hudson Distributed Testing Plugin</name>
-
-<distributionManagement>
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.jvnet.hudson.plugins</groupId>
+    <artifactId>plugin</artifactId>
+    <version>1.350</version>
+    <!-- which version of Hudson is this plugin built against? -->
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+  
+  <artifactId>distTest</artifactId>
+  <version>1.1-SNAPSHOT</version>
+  <packaging>hpi</packaging>
+  <url>http://wiki.hudson-ci.org/display/HUDSON/distTest+Plugin</url>
+  <name>Hudson Distributed Testing Plugin</name>
+  
+  <distributionManagement>
     <repository>
-          <id>java.net-m2-repository</id>
-                <url>http://maven.hudson-labs.org:8081/content/repositories/releases/</url>
-                    </repository>
-                      </distributionManagement>
-
-
-    <!-- get every artifact through maven.glassfish.org, which proxies all the artifacts that we need -->
-    <repositories>
-        <repository>
-            <id>m.g.o-public</id>
-            <url>http://maven.glassfish.org/content/groups/public/</url>
-        </repository>
-        <repository>
-            <id>maven-repository</id>
-            <url>http://repo2.maven.org/maven2/</url>
-        </repository>
-    </repositories>
-
-    <pluginRepositories>
-       <!-- <pluginRepository>
-            <id>jarvana-repository</id>
-            <url>http://jarvana.com/jarvana/browse</url>
-        </pluginRepository>-->
-        <pluginRepository>
-            <id>m.g.o-public</id>
-            <url>http://maven.glassfish.org/content/groups/public/</url>
-        </pluginRepository>
-
-        <pluginRepository>
-            <id>maven-repository</id>
-            <url>http://repo2.maven.org/maven2/</url>
-        </pluginRepository>
-
-    </pluginRepositories>
-    <dependencies>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.8.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.ant</groupId>
-            <artifactId>ant</artifactId>
-            <version>1.8.0</version>
-            <type>jar</type>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.ant</groupId>
-            <artifactId>ant-junit</artifactId>
-            <version>1.8.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.ant</groupId>
-            <artifactId>ant-launcher</artifactId>
-            <version>1.8.0</version>
-        </dependency>
-        <dependency>
-            <groupId>udson.main</groupId>
-            <artifactId>hudson-test-harness</artifactId>
-            <version>1.350</version>
-        </dependency>
-    </dependencies>
+      <id>java.net-m2-repository</id>
+      <url>http://maven.hudson-labs.org:8081/content/repositories/releases/</url>
+    </repository>
+  </distributionManagement>
+  
+  
+  <!-- get every artifact through maven.glassfish.org, which proxies all the artifacts that we need -->
+  <repositories>
+    <repository>
+      <id>m.g.o-public</id>
+      <url>http://maven.glassfish.org/content/groups/public/</url>
+    </repository>
+    <repository>
+      <id>maven-repository</id>
+      <url>http://repo2.maven.org/maven2/</url>
+    </repository>
+  </repositories>
+  
+  <pluginRepositories>
+    <!-- <pluginRepository>
+    <id>jarvana-repository</id>
+    <url>http://jarvana.com/jarvana/browse</url>
+  </pluginRepository>-->
+    <pluginRepository>
+      <id>m.g.o-public</id>
+      <url>http://maven.glassfish.org/content/groups/public/</url>
+    </pluginRepository>
     
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>2.0.2</version>
-                <configuration>
-                    <encoding>${project.build.sourceEncoding}</encoding>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-resources-plugin</artifactId>
-                <version>2.2</version>
-                <configuration>
-                    <encoding>${project.build.sourceEncoding}</encoding>
-                </configuration>
-            </plugin>
-            <plugin>
-                    <artifactId>maven-release-plugin</artifactId>
-                            <configuration>
-                                      <goals>deploy</goals>
-                                              </configuration>
-                                                    </plugin>
-
-        </plugins>
-    </build>
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
-
-    <developers>
-        <developer>
-            <id>mnovak</id>
-            <name>Miroslav Novak</name>
-            <email>novak.miroslav95@gmail.com</email>
-        </developer>
-    </developers>
-
-<scm>
-   <connection>scm:svn:https://guest@svn.java.net/svn/hudson~svn/trunk/hudson/plugins/distTest</connection>
-      <developerConnection>scm:svn:https://svn.java.net/svn/hudson~svn/trunk/hudson/plugins/distTest</developerConnection>
-         <url>https://hudson.dev.java.net/source/browse/hudson/trunk/hudson/plugins/distTest</url>
+    <pluginRepository>
+      <id>maven-repository</id>
+      <url>http://repo2.maven.org/maven2/</url>
+    </pluginRepository>
+    
+  </pluginRepositories>
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.8.1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.ant</groupId>
+      <artifactId>ant</artifactId>
+      <version>1.8.0</version>
+      <type>jar</type>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.ant</groupId>
+      <artifactId>ant-junit</artifactId>
+      <version>1.8.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.ant</groupId>
+      <artifactId>ant-launcher</artifactId>
+      <version>1.8.0</version>
+    </dependency>
+    <dependency>
+      <groupId>udson.main</groupId>
+      <artifactId>hudson-test-harness</artifactId>
+      <version>1.350</version>
+    </dependency>
+  </dependencies>
+  
+  <build>
+    <plugins>
+      <plugin>
+	<groupId>org.apache.maven.plugins</groupId>
+	<artifactId>maven-compiler-plugin</artifactId>
+	<version>2.0.2</version>
+	<configuration>
+	  <encoding>${project.build.sourceEncoding}</encoding>
+	</configuration>
+      </plugin>
+      <plugin>
+	<groupId>org.apache.maven.plugins</groupId>
+	<artifactId>maven-resources-plugin</artifactId>
+	<version>2.2</version>
+	<configuration>
+	  <encoding>${project.build.sourceEncoding}</encoding>
+	</configuration>
+      </plugin>
+      <plugin>
+	<artifactId>maven-release-plugin</artifactId>
+	<configuration>
+	  <goals>deploy</goals>
+	</configuration>
+      </plugin>
+      
+    </plugins>
+  </build>
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+  
+  <developers>
+    <developer>
+      <id>mnovak</id>
+      <name>Miroslav Novak</name>
+      <email>novak.miroslav95@gmail.com</email>
+    </developer>
+  </developers>
+  
+  <scm>
+    <connection>scm:svn:https://guest@svn.java.net/svn/hudson~svn/trunk/hudson/plugins/distTest</connection>
+    <developerConnection>scm:svn:https://svn.java.net/svn/hudson~svn/trunk/hudson/plugins/distTest</developerConnection>
+    <url>https://hudson.dev.java.net/source/browse/hudson/trunk/hudson/plugins/distTest</url>
   </scm>
-
+  
 </project>
 
 
