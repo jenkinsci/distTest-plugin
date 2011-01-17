@@ -9,7 +9,7 @@
   </parent>
   
   <artifactId>distTest</artifactId>
-  <version>1.0</version>
+  <version>1.0-SNAPSHOT</version>
   <packaging>hpi</packaging>
   <url>http://wiki.hudson-ci.org/display/HUDSON/distTest+Plugin</url>
   <name>Hudson Distributed Testing Plugin</name>
